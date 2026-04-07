@@ -1,9 +1,5 @@
 # modiagram
-Draw molecular orbital and energy pathway diagrams.
-
-**Molecular Orbital Diagrams for Typst** — a package inspired by the LaTeX [`modiagram`](https://ctan.org/pkg/modiagram) package by Clemens Niederberger plus additional features for plotting energy pathway diagrams.
-
-Draw MO diagrams with atomic orbitals, electron arrows, connection lines, energy axes, and fully customisable styles — all inside a clean Typst API.
+Draw molecular orbital and energy pathway diagrams: a package inspired by the LaTeX [`modiagram`](https://ctan.org/pkg/modiagram) package by Clemens Niederberger plus additional features for plotting energy pathway diagrams.
 
 Requires [`@preview/cetz:0.4.2`](https://typst.app/universe/package/cetz).
 
