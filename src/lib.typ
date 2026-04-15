@@ -114,10 +114,14 @@
 //     closure signature: (xs, ys, anchors) => { draw.xxx(...) }
 //
 //   en-pathway(..energies, color, label-gap, label-size, x-step, electrons,
-//              style, conn-style, labels, name-prefix, x-start,
+//              style, conn-style, connect-across-skip, labels, name-prefix, x-start,
 //              show-energies, energy-format, energy-size, bar-stroke-w, ao-width)
 //     Energies may be int, float, length, or numeric string.
 //     Use skip as an energy value to advance x without drawing an orbital.
+//
+//   ep-annotation(from, to, body, name-prefix, dy, pad, color, size)
+//     from / to: orbital index (int) or full name string
+//     Draws a double-headed span arrow with a centered label below the diagram.
 //
 //   Cetz wrappers (same signature as cetz draw.*, with position forms above):
 //   line(..pts, pad, ..cetz-args)                        → also mo-line
@@ -208,37 +212,36 @@
 // Default values for every configurable parameter.
 // Override globally with modiagram-setup(), or per diagram with config: (:).
 #let _defaults = (
-  // ── orbital geometry ──────────────────────────────────────────────────────
+  // orbital geometry
   ao-width:      _W,      // orbital bar width (cm)
   style:         "plain", // orbital style: plain | square | round | circle | fancy
 
-  // ── stroke widths ─────────────────────────────────────────────────────────
-  // stroke-w is the shared fallback; each element type can override it.
+  // stroke widths — stroke-w is the shared fallback; each element type can override it
   stroke-w:      0.6pt,   // fallback — applies when bar/el/conn-stroke-w are auto
   bar-stroke-w:  auto,    // orbital bar stroke       (auto → stroke-w)
   el-stroke-w:   auto,    // electron arrow stroke    (auto → stroke-w)
   conn-stroke-w: auto,    // connection line stroke   (auto → stroke-w)
 
-  // ── electron arrow geometry ───────────────────────────────────────────────
+  // electron arrow geometry
   el-hook-size:  auto,    // hook arc radius (auto → 3 × el-stroke-w, TikZ rule)
   el-sep:        auto,    // gap between ↑ and ↓ shafts in a pair
                           //   auto → 0.2 × ao-width
                           //   explicit: float (implicit cm) or Typst length, e.g. 4pt
 
-  // ── connection lines ──────────────────────────────────────────────────────
+  // connection lines
   conn-style:    auto,    // line style (auto adapts to orbital style)
   dot-gap:       3pt,     // spacing between dots or dashes
 
-  // ── labels ────────────────────────────────────────────────────────────────
+  // labels
   label-gap:     0.28,    // gap between bar bottom edge and label (cm)
   label-size:    7.5pt,   // font size for orbital labels
 
-  // ── canvas scaling ────────────────────────────────────────────────────────
+  // canvas scaling
   scale:         1.4cm,   // 1 cetz unit = this length; scales the whole diagram
   x-scale:       1.0,     // additional multiplier for all x coordinates
   energy-scale:  1.0,     // additional multiplier for all energy (y) coordinates
 
-  // ── colors ────────────────────────────────────────────────────────────────
+  // colors
   color:         black,   // base color for bar, electrons and label
   bar-color:     auto,    // bar color only    (auto → color)
   el-color:      auto,    // electron color    (auto → color)
@@ -398,13 +401,12 @@
 #let _resolve-pos(pos, xs, ys, anchors, pad) = {
   let p = _cm(pad)
 
-  // ── rel() is handled by the calling wrapper, not here ─────────────────────
-  // If it reaches this function, pass it through as a cetz (rel:) dict.
+  // rel() is handled by the calling wrapper; pass through as a cetz (rel:) dict if reached here.
   if type(pos) == dictionary and pos.at("kind", default: none) == "rel" {
     return (rel: (pos.dx * xs, pos.dy * ys))
   }
 
-  // ── interpolation: ("pos1", ratio%, "pos2") ───────────────────────────────
+  // Interpolation: ("pos1", ratio%, "pos2")
   if type(pos) == array and pos.len() == 3 and type(pos.at(1)) == ratio {
     let t = pos.at(1) / 100%
     assert(t >= 0.0 and t <= 1.0,
@@ -418,12 +420,12 @@
     )
   }
 
-  // ── numeric tuple: (x, y) ─────────────────────────────────────────────────
+  // Numeric tuple: (x, y)
   if type(pos) == array and pos.len() == 2 {
     return (pos.at(0) * xs, pos.at(1) * ys)
   }
 
-  // ── string: "name" or "name.edge" ─────────────────────────────────────────
+  // String: "name" or "name.edge"
   if type(pos) == str {
     let parts = pos.split(".")
     let name  = parts.at(0)
@@ -1108,8 +1110,9 @@
   x-step:        1.2,      // horizontal distance between orbitals (implicit cm)
   electrons:     "",
   style:         auto,
-  conn-style:    "dashed",
-  labels:        none,
+  conn-style:          "dashed",
+  connect-across-skip: true,
+  labels:              none,
   name-prefix:   "ep",
   x-start:       0,
   show-energies: false,
@@ -1151,7 +1154,7 @@
 //   Called by modiagram() inside its context block after resolving ep-cfg.
 //   All parameters must be fully resolved (no auto) before calling.
 #let _en-pathway-build(values, color, label-gap, label-size, x-step, electrons,
-                       style, conn-style, labels, name-prefix, x-start,
+                       style, conn-style, connect-across-skip, labels, name-prefix, x-start,
                        show-energies, energy-format, energy-size, bar-stroke-w, ao-width) = {
   // Normalise labels: accept a bare content value in addition to an array.
   // en-pathway(..., labels: $1s$)           → treated as ($1s$,)
@@ -1168,8 +1171,8 @@
 
   for val in values {
     if type(val) == dictionary and val.at("kind", default: none) == "en-pathway-skip" {
-      x        += step
-      prev-name = none
+      x += step
+      if not connect-across-skip { prev-name = none }
 
     } else {
       assert(type(val) in (type(0), type(0.0), type(1cm), type("")),
@@ -1244,9 +1247,10 @@
 //   x-step:         horizontal distance between orbitals (implicit cm)
 //   electrons:      electron string applied to all orbitals  (default: "")
 //   style:          orbital style
-//   conn-style:     connection style between adjacent orbitals
-//                   "dashed" | "dotted" | "solid" | "gray" | none
-//   labels:         array of content, one label per orbital
+//   conn-style:          connection style between adjacent orbitals
+//                        "dashed" | "dotted" | "solid" | "gray" | none
+//   connect-across-skip: if true, connect orbitals even when separated by skip (default: true)
+//   labels:              array of content, one label per orbital
 //   name-prefix:    prefix for auto-generated orbital names  (default: "ep")
 //                   change when using multiple en-pathway() in one diagram
 //   x-start:        starting x position  (default: 0)
@@ -1259,21 +1263,22 @@
 //   en-pathway(0, 0.5, 1.0, skip, 1.5, color: red)
 //   en-pathway(0, 0.3, 0.7, labels: ($A$, $B$, $C$), conn-style: "solid")
 #let en-pathway(..args,
-  color:         auto,
-  label-gap:     auto,
-  label-size:    auto,
-  x-step:        auto,
-  electrons:     auto,
-  style:         auto,
-  conn-style:    auto,
-  labels:        auto,
-  name-prefix:   auto,
-  x-start:       auto,
-  show-energies: auto,
-  energy-format: auto,
-  energy-size:   auto,
-  bar-stroke-w:  auto,
-  ao-width:      auto,
+  color:                auto,
+  label-gap:            auto,
+  label-size:           auto,
+  x-step:               auto,
+  electrons:            auto,
+  style:                auto,
+  conn-style:           auto,
+  connect-across-skip:  auto,
+  labels:               auto,
+  name-prefix:          auto,
+  x-start:              auto,
+  show-energies:        auto,
+  energy-format:        auto,
+  energy-size:          auto,
+  bar-stroke-w:         auto,
+  ao-width:             auto,
 ) = {
   // Early validation of arguments that don't need state resolution.
   if style != auto     { _assert-style(style, "en-pathway") }
@@ -1291,23 +1296,94 @@
   // Return a deferred descriptor resolved by modiagram() inside its context block,
   // where _ep-state.get() is available and en-pathway-setup() changes are visible.
   (kind: "en-pathway-deferred",
-   pos-args:      args.pos(),
-   color:         color,
-   label-gap:     label-gap,
-   label-size:    label-size,
-   x-step:        x-step,
-   electrons:     electrons,
-   style:         style,
-   conn-style:    conn-style,
-   labels:        labels,
-   name-prefix:   name-prefix,
-   x-start:       x-start,
-   show-energies: show-energies,
-   energy-format: energy-format,
-   energy-size:   energy-size,
-   bar-stroke-w:  bar-stroke-w,
-   ao-width:      ao-width,
+   pos-args:             args.pos(),
+   color:                color,
+   label-gap:            label-gap,
+   label-size:           label-size,
+   x-step:               x-step,
+   electrons:            electrons,
+   style:                style,
+   conn-style:           conn-style,
+   connect-across-skip:  connect-across-skip,
+   labels:               labels,
+   name-prefix:          name-prefix,
+   x-start:              x-start,
+   show-energies:        show-energies,
+   energy-format:        energy-format,
+   energy-size:          energy-size,
+   bar-stroke-w:         bar-stroke-w,
+   ao-width:             ao-width,
   )
+}
+
+
+// ep-annotation — span annotation between two en-pathway orbitals.
+//
+//   from         start orbital: integer index or full name string
+//   to           end orbital:   integer index or full name string
+//   body         label content, e.g. [Step 1] or $Delta G$
+//   name-prefix  must match the en-pathway() name-prefix  (default: "ep")
+//   dy           vertical offset below the auto position  (default: 0, negative = further down)
+//   pad          extra horizontal margin beyond the orbital edges  (default: 0)
+//   color        line and label color  (default: black)
+//   size         label font size  (default: auto)
+//
+//   ep-annotation(0, 2, [Step 1])
+//   ep-annotation(2, 4, [Step 2], color: red, pad: 0.1)
+//   ep-annotation("ep-0", "ep-3", $Delta G$, dy: -0.3, size: 8pt)
+#let ep-annotation(from, to, body,
+  name-prefix: "ep",
+  dy:          0,
+  pad:         0,
+  color:       black,
+  size:        auto,
+) = {
+  assert(type(from) in (type(0), type("")),
+    message: "ep-annotation: from must be an int or string — received: " + repr(from))
+  assert(type(to) in (type(0), type("")),
+    message: "ep-annotation: to must be an int or string — received: " + repr(to))
+
+  let name-a = if type(from) == int { name-prefix + "-" + str(from) } else { from }
+  let name-b = if type(to)   == int { name-prefix + "-" + str(to)   } else { to   }
+
+  (kind: "raw", body: (xs, ys, anchors) => {
+    assert(name-a in anchors,
+      message: "ep-annotation: orbital \""
+               + name-a + "\" not found"
+               + "\n  defined orbitals: " + anchors.keys().join(", "))
+    assert(name-b in anchors,
+      message: "ep-annotation: orbital \""
+               + name-b + "\" not found"
+               + "\n  defined orbitals: " + anchors.keys().join(", "))
+
+    let na = anchors.at(name-a)
+    let nb = anchors.at(name-b)
+
+    let (xl, xr) = if na.center <= nb.center {
+      (na.left, nb.right)
+    } else {
+      (nb.left, na.right)
+    }
+    let p   = _cm(pad)
+    let xl  = xl - p
+    let xr  = xr + p
+    let mid = (xl + xr) / 2
+
+    let all-bot = anchors.values().map(a => a.bottom)
+    let y-ann   = all-bot.fold(all-bot.first(), (acc, v) => calc.min(acc, v)) - 0.4 + _cm(dy)
+
+    let st = (paint: color, thickness: 0.5pt)
+    draw.line((xl, y-ann), (xr, y-ann),
+      mark: (
+        start: (symbol: ">>", fill: color, scale: 0.75),
+        end:   (symbol: ">>", fill: color, scale: 0.75),
+      ),
+      stroke: st)
+
+    let rendered = if size != auto { _resize(size, text(fill: color, body)) }
+                   else            { text(fill: color, body) }
+    draw.content((mid, y-ann), rendered, anchor: "north", padding: .5em)
+  })
 }
 
 
@@ -1390,21 +1466,22 @@
       let resolved-label-size = resolve(item.label-size, "label-size")
       let expanded = _en-pathway-build(
         item.pos-args,
-        resolve(item.color,         "color"),
-        resolve(item.label-gap,     "label-gap"),
+        resolve(item.color,                "color"),
+        resolve(item.label-gap,            "label-gap"),
         resolved-label-size,
-        resolve(item.x-step,        "x-step"),
-        resolve(item.electrons,     "electrons"),
-        resolve(item.style,         "style"),
-        resolve(item.conn-style,    "conn-style"),
-        resolve(item.labels,        "labels"),
-        resolve(item.name-prefix,   "name-prefix"),
-        resolve(item.x-start,       "x-start"),
-        resolve(item.show-energies, "show-energies"),
-        resolve(item.energy-format, "energy-format"),
+        resolve(item.x-step,               "x-step"),
+        resolve(item.electrons,            "electrons"),
+        resolve(item.style,                "style"),
+        resolve(item.conn-style,           "conn-style"),
+        resolve(item.connect-across-skip,  "connect-across-skip"),
+        resolve(item.labels,               "labels"),
+        resolve(item.name-prefix,          "name-prefix"),
+        resolve(item.x-start,              "x-start"),
+        resolve(item.show-energies,        "show-energies"),
+        resolve(item.energy-format,        "energy-format"),
         if item.energy-size != auto { item.energy-size } else { resolved-label-size },
-        resolve(item.bar-stroke-w,  "bar-stroke-w"),
-        resolve(item.ao-width,      "ao-width"),
+        resolve(item.bar-stroke-w,         "bar-stroke-w"),
+        resolve(item.ao-width,             "ao-width"),
       )
       all = all + expanded.flatten()
     } else {
