@@ -21,6 +21,8 @@
 //         ao(name: "σ*",  x: 1.75, energy:  0.65, electrons: "",     label: $sigma^*$),
 //         connect("1s-L & σ", "1s-R & σ", "1s-L & σ*", "1s-R & σ*"),
 //         energy-axis(title: [Energy], style: "horizontal"),
+//         // optionally add x-axis (connects automatically with energy-axis):
+//         // x-axis(title: [x]),
 //       )
 //     })
 //
@@ -107,8 +109,12 @@
 //     Affects all subsequent ao() and connect() calls within the diagram.
 //     Pass auto to reset a key back to the diagram default.
 //
-//   energy-axis(title, padding, style)
+//   energy-axis(title, pad, style)
 //     style: "vertical" (default) | "horizontal"
+//
+//   x-axis(title, pad, style)
+//     style: "below" (default) | "above"
+//     When used with energy-axis(), the two share an origin corner.
 //
 //   raw(closure)
 //     closure signature: (xs, ys, anchors) => { draw.xxx(...) }
@@ -122,6 +128,11 @@
 //   ep-annotation(from, to, body, name-prefix, dy, pad, color, size)
 //     from / to: orbital index (int) or full name string
 //     Draws a double-headed span arrow with a centered label below the diagram.
+//
+//   en-difference(orb-a, orb-b, body, ratio, pad, color, line-color, label-color,
+//                 show-label, thickness, size, title)
+//     Arrow at right edge of orb-a, dashed line to left edge of orb-b,
+//     optional boxed ΔE label along the arrow, optional title below the label.
 //
 //   Cetz wrappers (same signature as cetz draw.*, with position forms above):
 //   line(..pts, pad, ..cetz-args)                        → also mo-line
@@ -156,6 +167,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #import "@preview/cetz:0.4.2": canvas, draw
+#import "@preview/zero:0.6.1": num as _zero-num
 
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -494,6 +506,22 @@
   (val, rest)
 }
 
+// _pop-many — extract several named keys from a dict in a single pass.
+//   defaults: dict of (key: default-value, ...)
+//   Returns (extracted-dict, remaining-dict).
+//   Replaces chained _pop calls; cost is one iteration regardless of key count.
+#let _pop-many(named, defaults) = {
+  let rest = (:)
+  for (k, v) in named.pairs() {
+    if k not in defaults { rest.insert(k, v) }
+  }
+  let extracted = (:)
+  for (k, d) in defaults.pairs() {
+    extracted.insert(k, named.at(k, default: d))
+  }
+  (extracted, rest)
+}
+
 
 // ═════════════════════════════════════════════════════════════════════════════
 // PUBLIC HELPERS
@@ -778,26 +806,56 @@
 // energy-axis — draw a vertical energy arrow at the left of the diagram.
 //
 //   title    content near the arrowhead (default: none)
-//   padding  horizontal gap from the leftmost orbital edge (default: 0.5)
+//   pad      horizontal gap from the leftmost orbital edge (default: 0.5)
 //   style    "vertical" | "horizontal"
 //
 //   Examples:
 //     energy-axis()
 //     energy-axis(title: "Energy")
-//     energy-axis(title: "Energy", padding: 0.7cm, style: "horizontal")
-#let energy-axis(title: none, padding: 0.5, style: "vertical") = {
+//     energy-axis(title: "Energy", pad: 0.7cm, style: "horizontal")
+#let energy-axis(title: none, pad: 0.5, style: "vertical") = {
   assert(style in ("vertical", "horizontal"),
     message: "energy-axis: invalid style \""
              + style
              + "\"\n  valid styles: \"vertical\", \"horizontal\"")
-  assert(type(padding) in (type(0), type(0.0), type(1cm)),
-    message: "energy-axis: padding must be a number or length — received: "
-             + repr(padding))
+  assert(type(pad) in (type(0), type(0.0), type(1cm)),
+    message: "energy-axis: pad must be a number or length — received: "
+             + repr(pad))
   (
-    kind:    "energy-axis",
-    title:   title,
-    padding: padding,
-    style:   style,
+    kind:  "energy-axis",
+    title: title,
+    pad:   pad,
+    style: style,
+  )
+}
+
+// x-axis — draw a horizontal axis below the diagram.
+//
+//   title    content near the arrowhead (default: none)
+//   pad      vertical gap from the lowest orbital edge (default: 0.5)
+//   style    "above" (label above the arrowhead) | "below" (default)
+//
+//   When used together with energy-axis(), the two axes share an origin
+//   corner — the energy-axis arrow starts from that corner and the x-axis
+//   arrow extends to the right from it.
+//
+//   Examples:
+//     x-axis()
+//     x-axis(title: [Reaction coordinate])
+//     x-axis(title: [x], pad: 0.7cm)
+#let x-axis(title: none, pad: 0.5, style: "below") = {
+  assert(style in ("above", "below"),
+    message: "x-axis: invalid style \""
+             + style
+             + "\"\n  valid styles: \"above\", \"below\"")
+  assert(type(pad) in (type(0), type(0.0), type(1cm)),
+    message: "x-axis: pad must be a number or length — received: "
+             + repr(pad))
+  (
+    kind:  "x-axis",
+    title: title,
+    pad:   pad,
+    style: style,
   )
 }
 
@@ -866,18 +924,13 @@
 //   content("σ.top", text(fill: red)[LUMO], anchor: "south", pad: 0.1)
 //   content(("a.bottom", 50%, "b.bottom"), $mid$, anchor: "north", dy: -0.2)
 #let content(pos, body, ..args) = {
-  let named = args.named()
-  let (pad,  named) = _pop(named, "pad",   default: 0)
-  let (dx,   named) = _pop(named, "dx",    default: 0)
-  let (dy,   named) = _pop(named, "dy",    default: 0)
-  let (size, named) = _pop(named, "size",  default: auto)
-  let (al,   named) = _pop(named, "align", default: none)
+  let (ex, named) = _pop-many(args.named(), (pad: 0, dx: 0, dy: 0, size: auto, align: none))
   (kind: "raw", body: (xs, ys, anchors) => {
-    let p     = _resolve-pos(pos, xs, ys, anchors, pad)
-    let final = (p.at(0) + _cm(dx), p.at(1) + _cm(dy))
+    let p     = _resolve-pos(pos, xs, ys, anchors, ex.pad)
+    let final = (p.at(0) + _cm(ex.dx), p.at(1) + _cm(ex.dy))
     let r     = body
-    if size != auto { r = _resize(size, r) }
-    if al   != none { r = std.align(al, r) }
+    if ex.size  != auto { r = _resize(ex.size, r) }
+    if ex.align != none { r = std.align(ex.align, r) }
     draw.content(final, r, ..named)
   })
 }
@@ -888,13 +941,10 @@
 //   circle("σ", radius: 0.3, stroke: blue, fill: yellow.lighten(80%))
 //   circle("σ", dx: 0.1, dy: 0.1, radius: 0.3)
 #let circle(center, ..args) = {
-  let named = args.named()
-  let (pad, named) = _pop(named, "pad", default: 0)
-  let (dx,  named) = _pop(named, "dx",  default: 0)
-  let (dy,  named) = _pop(named, "dy",  default: 0)
+  let (ex, named) = _pop-many(args.named(), (pad: 0, dx: 0, dy: 0))
   (kind: "raw", body: (xs, ys, anchors) => {
-    let p     = _resolve-pos(center, xs, ys, anchors, pad)
-    let final = (p.at(0) + _cm(dx), p.at(1) + _cm(dy))
+    let p     = _resolve-pos(center, xs, ys, anchors, ex.pad)
+    let final = (p.at(0) + _cm(ex.dx), p.at(1) + _cm(ex.dy))
     draw.circle(final, ..named)
   })
 }
@@ -920,13 +970,10 @@
 //   arc("σ", start: 0deg, stop: 180deg, radius: 0.5, stroke: red)
 //   arc((0,0), start: 45deg, delta: 90deg, radius: 1, mode: "PIE", fill: blue)
 #let arc(center, ..args) = {
-  let named = args.named()
-  let (pad, named) = _pop(named, "pad", default: 0)
-  let (dx,  named) = _pop(named, "dx",  default: 0)
-  let (dy,  named) = _pop(named, "dy",  default: 0)
+  let (ex, named) = _pop-many(args.named(), (pad: 0, dx: 0, dy: 0))
   (kind: "raw", body: (xs, ys, anchors) => {
-    let p     = _resolve-pos(center, xs, ys, anchors, pad)
-    let final = (p.at(0) + _cm(dx), p.at(1) + _cm(dy))
+    let p     = _resolve-pos(center, xs, ys, anchors, ex.pad)
+    let final = (p.at(0) + _cm(ex.dx), p.at(1) + _cm(ex.dy))
     draw.arc(final, ..named)
   })
 }
@@ -1206,8 +1253,12 @@
         let rendered = if energy-format != auto {
           energy-format(energy)
         } else {
-          let rounded = calc.round(energy, digits: 2)
-          $#rounded$
+          let rs = str(energy)
+          _zero-num(
+            round: (mode: "places", precision: 2),
+            positive-sign: true,
+            math: false,
+          )[#rs]
         }
         result.push(content(
           (x, energy),
@@ -1256,6 +1307,7 @@
 //   x-start:        starting x position  (default: 0)
 //   show-energies:  if true, place the energy value above each orbital
 //   energy-format:  function v => content for custom energy formatting
+//                   default: zero num() with 2 decimal places, sign, no math mode
 //   energy-size:    font size for energy labels  (auto → label-size)
 //   bar-stroke-w:   stroke width for bars and electrons
 //   ao-width:       bar width  (implicit cm)
@@ -1387,6 +1439,146 @@
 }
 
 
+// en-difference — draw a ΔE annotation between two orbitals.
+//
+//   orb-a         first orbital name — the arrow is placed at its right edge
+//   orb-b         second orbital name — the dashed line ends at its left edge
+//   body          label content, e.g. $Delta E$ or auto (computes |ΔE| from orbital energies)
+//   ratio         label position along the arrow, 0% = bottom, 100% = top  (default: 50%)
+//   pad           extra offset from the right edge of orb-a to the arrow  (default: 0)
+//   color         combined color for arrow, dashed line, and label
+//   line-color    color for the arrow and dashed line only  (overrides color)
+//   label-color   color for the label only  (overrides color)
+//   show-label    whether to show the ΔE label  (default: true)
+//   thickness     stroke width for the arrow and dashed line  (default: 0.5pt)
+//   size          font size for the ΔE label and title  (default: auto → cfg label-size)
+//   title         content rendered below the energy value, inside the same box  (default: none)
+//   title-gap     vertical space between the energy value and the title  (default: 0.2em)
+//
+//   The function draws:
+//     • a vertical double-headed solid arrow at the right edge of orb-a
+//     • a horizontal dashed line from the arrow tip to the left edge of orb-b
+//     • an optionally boxed ΔE label at the given ratio position along the arrow
+//
+//   Note: to reposition orbital labels above/below instead of below (default), set
+//   label: none on the ao() calls and draw labels manually with content().
+//
+//   en-difference("σ", "σ*")
+//   en-difference("HOMO", "LUMO", ratio: 40%, color: green, pad: 0.15)
+//   en-difference("a", "b", $Delta G$, show-label: false)
+#let en-difference(orb-a, orb-b,
+  body:        auto,
+  ratio:       50%,
+  pad:         0,
+  color:       black,
+  line-color:  auto,
+  label-color: auto,
+  show-label:  true,
+  thickness:   0.5pt,
+  size:        8pt,
+  title:       none,
+  title-gap:   0.4em,
+) = {
+  assert(type(orb-a) == str,
+    message: "en-difference: orb-a must be an orbital name string — received: " + repr(orb-a))
+  assert(type(orb-b) == str,
+    message: "en-difference: orb-b must be an orbital name string — received: " + repr(orb-b))
+  assert(type(ratio) == type(1%),
+    message: "en-difference: ratio must be a percentage, e.g. 50% — received: " + repr(ratio))
+
+  (kind: "raw", body: (xs, ys, anchors) => {
+    assert(orb-a in anchors,
+      message: "en-difference: orbital \""
+               + orb-a + "\" not found"
+               + "\n  defined orbitals: " + anchors.keys().join(", "))
+    assert(orb-b in anchors,
+      message: "en-difference: orbital \""
+               + orb-b + "\" not found"
+               + "\n  defined orbitals: " + anchors.keys().join(", "))
+
+    let na = anchors.at(orb-a)
+    let nb = anchors.at(orb-b)
+
+    // Resolve colors: line-color / label-color override the shared color.
+    let lc = if line-color  != auto { line-color  } else { color }
+    let tc = if label-color != auto { label-color } else { color }
+
+    // Arrow is anchored to the RIGHT side of orb-a.
+    // The dashed line connects to the LEFT side of orb-b.
+    let arrow-x = nb.right + _cm(pad)
+
+    // Separate strokes: horizontal connecting line is dashed, arrow is solid.
+    let st-dash  = (paint: lc, thickness: thickness, dash: "dashed")
+    let st-solid = (paint: lc, thickness: thickness)
+
+    // Horizontal dashed line from right edge of orb-a to the arrow (only when pad > 0).
+    if calc.abs(arrow-x - na.right) > 0.001 {
+      draw.line((na.right, na.y), (arrow-x, na.y), stroke: st-dash)
+    }
+    // Horizontal dashed line from the arrow to the left edge of orb-b.
+    if calc.abs(arrow-x - nb.left) > 0.001 {
+      draw.line((arrow-x, nb.y), (nb.right, nb.y), stroke: st-dash)
+    }
+
+    // Vertical double-headed solid arrow spanning na.y ↔ nb.y.
+    let (y-bot, y-top) = if na.y <= nb.y { (na.y, nb.y) } else { (nb.y, na.y) }
+    draw.line(
+      (arrow-x, y-bot),
+      (arrow-x, y-top),
+      mark: (
+        start: (symbol: ">>", fill: lc, scale: 0.5),
+        end:   (symbol: ">>", fill: lc, scale: 0.5),
+      ),
+      stroke: st-solid,
+    )
+
+    // ΔE label — drawn only when show-label is true.
+    if show-label {
+      let t       = ratio / 100%
+      let label-y = y-bot + (y-top - y-bot) * t
+
+      // Auto-compute |ΔE| from the scaled y coordinates.
+      // anchors store pre-scaled values; divide by ys to recover the original energy.
+      let b = if body != auto {
+        body
+      } else {
+        let delta = calc.abs(na.y - nb.y) / ys
+        let rs    = str(delta)
+        _zero-num(
+          round: (mode: "places", precision: 2),
+          positive-sign: true,
+          math: false,
+        )[#rs]
+      }
+
+      let rendered = if size != auto { _resize(size, text(fill: tc, b)) }
+                     else            { text(fill: tc, b) }
+
+      // Label box centered on the arrow at label-y.
+      // When a title is provided it is stacked below the energy value,
+      // both center-aligned, inside the same rounded rectangle.
+      let box-body = if title != none {
+        let title-rendered = if size != auto { _resize(size, text(fill: tc, title)) }
+                             else            { text(fill: tc, title) }
+        std.align(center, stack(dir: ttb, rendered, title-gap, title-rendered))
+      } else {
+        rendered
+      }
+      draw.content(
+        (arrow-x, label-y),
+        box(
+          box-body,
+          inset: 0.3em,
+          fill:   white,
+          stroke: (paint: tc, thickness: thickness),
+          radius: 30%,
+        ),
+      )
+    }
+  })
+}
+
+
 // ═════════════════════════════════════════════════════════════════════════════
 // MO- ALIASES — collision-free names for cetz wrappers that shadow Typst builtins
 //
@@ -1417,7 +1609,7 @@
 // modiagram — render the complete diagram
 //
 //   Positional arguments: any combination of ao(), connect(), connect-label(),
-//   config(), energy-axis(), en-pathway(), raw(), and cetz wrappers — in any order.
+//   config(), energy-axis(), x-axis(), en-pathway(), raw(), and cetz wrappers — in any order.
 //
 //   config: (...)  override any _defaults key for this diagram only.
 //   Priority: per-element → config() → modiagram(config:) → modiagram-setup() → defaults
@@ -1489,13 +1681,27 @@
     }
   }
 
-  let dicts = all.filter(i => type(i) == type((:)))
-  let fns   = all.filter(i => type(i) == function)
+  // ── Single categorization pass — avoids 5 separate filter() calls ───────
+  let dicts   = ()
+  let fns     = ()
+  let aos     = ()
+  let eaxes   = ()
+  let xaxes   = ()
+  let has-raw = false
+  for i in all {
+    if type(i) == function {
+      fns.push(i)
+    } else if type(i) == type((:)) {
+      dicts.push(i)
+      let k = i.kind
+      if      k == "ao"           { aos.push(i) }
+      else if k == "energy-axis"  { eaxes.push(i) }
+      else if k == "x-axis"       { xaxes.push(i) }
+      else if k == "raw"          { has-raw = true }
+    }
+  }
 
-  let aos   = dicts.filter(i => i.kind == "ao")
-  let eaxes = dicts.filter(i => i.kind == "energy-axis")
-
-  assert(aos.len() > 0 or dicts.filter(i => i.kind == "raw").len() > 0 or fns.len() > 0,
+  assert(aos.len() > 0 or has-raw or fns.len() > 0,
     message: "modiagram: no content — add at least one ao() call")
 
   // ── Diagram-level stroke widths ───────────────────────────────────────────
@@ -1505,28 +1711,28 @@
   // ── Build orbital anchor table ────────────────────────────────────────────
   // Two-pass approach: first pass mirrors the rendering loop so that each
   // orbital's anchor reflects its actual ao-width (from ao(), config(), or cfg).
-  let anchors          = (:)
+  // eff-pre: merged cfg + active overrides; rebuilt only when overrides change.
+  let anchors           = (:)
   let _ao-overrides-pre = (:)
+  let eff-pre           = cfg
 
-  for item in dicts.filter(i => i.kind in ("ao", "ao-config")) {
+  for item in dicts {
     if item.kind == "ao-config" {
       for (k, v) in item.overrides.pairs() {
         if v == auto { _ao-overrides-pre.remove(k, default: none) }
         else         { _ao-overrides-pre.insert(k, v) }
       }
-    } else {
+      // Rebuild merged config once per override change, not per orbital.
+      eff-pre = cfg
+      for (k, v) in _ao-overrides-pre.pairs() { eff-pre.insert(k, v) }
+    } else if item.kind == "ao" {
       let a         = item
-      let xs-l = if "x-scale"      in _ao-overrides-pre { _ao-overrides-pre.at("x-scale")      } else { xs }
-      let ys-l = if "energy-scale" in _ao-overrides-pre { _ao-overrides-pre.at("energy-scale") } else { ys }
-      let bar-style = if a.style != auto                    { a.style }
-                      else if "style" in _ao-overrides-pre   { _ao-overrides-pre.at("style") }
-                      else                                   { cfg.style }
-      let ax = a.x * xs-l
-      let ay = a.energy * ys-l
-
-      let W-a = if a.ao-width != auto                     { _cm(a.ao-width) }
-                else if "ao-width" in _ao-overrides-pre    { _cm(_ao-overrides-pre.at("ao-width")) }
-                else                                       { W }
+      let xs-l      = eff-pre.x-scale
+      let ys-l      = eff-pre.energy-scale
+      let bar-style = if a.style != auto { a.style } else { eff-pre.style }
+      let ax        = a.x * xs-l
+      let ay        = a.energy * ys-l
+      let W-a       = if a.ao-width != auto { _cm(a.ao-width) } else { _cm(eff-pre.ao-width) }
 
       let half-x = if bar-style in ("square", "round") { (W-a + 2 * _pt) / 2 }
                    else if bar-style == "fancy"  { (W-a + 2 * _pt) / 2 + 0.5 * W-a }
@@ -1553,7 +1759,12 @@
     // ── Single ordered pass ────────────────────────────────────────────────
     // Processes ao(), connect(), config(), label-like raws in document order
     // so that config() affects all subsequent elements correctly.
+    //
+    // eff: merged cfg + active _ao-overrides; rebuilt only when overrides
+    // change (once per config() call) rather than re-queried per property
+    // per orbital. Reduces ~25 dict lookups/orbital to ~9.
     let _ao-overrides = (:)
+    let eff           = cfg
 
     for item in dicts {
 
@@ -1563,6 +1774,9 @@
           if v == auto { _ao-overrides.remove(k, default: none) }
           else         { _ao-overrides.insert(k, v) }
         }
+        // Rebuild merged config once per override change, not per orbital.
+        eff = cfg
+        for (k, v) in _ao-overrides.pairs() { eff.insert(k, v) }
 
       // ── connect() ────────────────────────────────────────────────────────
       } else if item.kind == "connect" {
@@ -1585,24 +1799,18 @@
           (na.left, nb.right)
         }
 
-        // Color priority: per-connection → config() → cfg → black
-        let conn-color = if item.color != auto               { item.color }
-                         else if "color" in _ao-overrides     { _ao-overrides.at("color") }
-                         else if cfg.color != black           { cfg.color }
-                         else                                 { auto }
+        // Color priority: per-connection → eff.color → black
+        let conn-color = if item.color != auto    { item.color }
+                         else if eff.color != black { eff.color }
+                         else                       { auto }
 
-        // Style priority: per-connection → config(conn-style) → cfg.conn-style
-        let active-conn-style = if "conn-style" in _ao-overrides { _ao-overrides.at("conn-style") }
-                                else                              { cfg.conn-style }
-        let active-style      = if "style" in _ao-overrides      { _ao-overrides.at("style") }
-                                else                              { cfg.style }
         let s = if item.style != auto { item.style }
-                else { _resolve-conn-style(active-conn-style, active-style) }
+                else { _resolve-conn-style(eff.conn-style, eff.style) }
 
-        // Thickness priority: per-connection → config(bar-stroke-w) → conn-sw
-        let conn-th = if item.thickness != auto                   { item.thickness }
-                      else if "bar-stroke-w" in _ao-overrides      { _ao-overrides.at("bar-stroke-w") }
-                      else                                         { conn-sw }
+        // Thickness priority: per-connection → eff.bar-stroke-w → conn-sw
+        let conn-th = if item.thickness != auto         { item.thickness }
+                      else if eff.bar-stroke-w != auto  { eff.bar-stroke-w }
+                      else                              { conn-sw }
 
         draw.line((ax, na.y), (bx, nb.y),
           stroke: _conn-stroke(s, conn-color, conn-th, item.gap, item.dash-length))
@@ -1610,71 +1818,38 @@
       // ── ao() orbital ──────────────────────────────────────────────────────
       } else if item.kind == "ao" {
         let a         = item
-        let bar-style = if a.style != auto                   { a.style }
-                        else if "style" in _ao-overrides      { _ao-overrides.at("style") }
-                        else                                  { cfg.style }
+        let bar-style = if a.style != auto { a.style } else { eff.style }
 
-        // Color resolution chain for each element:
-        //   ao(param) → config(param) → config(color) → cfg.param → cfg.color → black
-        let base-color  = if a.color != black                { a.color }
-                          else if "color" in _ao-overrides    { _ao-overrides.at("color") }
-                          else if cfg.color != black          { cfg.color }
-                          else                                { black }
-        let bar-color   = if a.bar-color != auto                  { a.bar-color }
-                          else if "bar-color" in _ao-overrides     { _ao-overrides.at("bar-color") }
-                          else if cfg.bar-color != auto            { cfg.bar-color }
-                          else                                     { base-color }
-        let el-color    = if a.el-color != auto                   { a.el-color }
-                          else if "el-color" in _ao-overrides      { _ao-overrides.at("el-color") }
-                          else if cfg.el-color != auto             { cfg.el-color }
-                          else                                     { base-color }
-        let label-color = if a.label-color != auto                { a.label-color }
-                          else if "label-color" in _ao-overrides   { _ao-overrides.at("label-color") }
-                          else if cfg.label-color != auto          { cfg.label-color }
-                          else                                     { bar-color }
+        // Color resolution — ao param → eff (already merges override + cfg)
+        let base-color  = if a.color      != black { a.color      } else { eff.color }
+        let bar-color   = if a.bar-color  != auto  { a.bar-color  } else if eff.bar-color  != auto { eff.bar-color  } else { base-color }
+        let el-color    = if a.el-color   != auto  { a.el-color   } else if eff.el-color   != auto { eff.el-color   } else { base-color }
+        let label-color = if a.label-color != auto { a.label-color } else if eff.label-color != auto { eff.label-color } else { bar-color }
 
         // Stroke widths
-        let el-sw  = if a.el-stroke-w != auto                { a.el-stroke-w }
-                     else if "el-stroke-w" in _ao-overrides   { _ao-overrides.at("el-stroke-w") }
-                     else if cfg.el-stroke-w != auto          { cfg.el-stroke-w }
-                     else                                     { cfg.stroke-w }
-        let bar-sw = if a.bar-stroke-w != auto               { a.bar-stroke-w }
-                     else if "bar-stroke-w" in _ao-overrides  { _ao-overrides.at("bar-stroke-w") }
-                     else if cfg.bar-stroke-w != auto         { cfg.bar-stroke-w }
-                     else                                     { cfg.stroke-w }
+        let el-sw  = if a.el-stroke-w  != auto { a.el-stroke-w  } else if eff.el-stroke-w  != auto { eff.el-stroke-w  } else { eff.stroke-w }
+        let bar-sw = if a.bar-stroke-w != auto { a.bar-stroke-w } else if eff.bar-stroke-w != auto { eff.bar-stroke-w } else { eff.stroke-w }
 
         // Label properties
-        let lsize = if a.label-size != auto                  { a.label-size }
-                    else if "label-size" in _ao-overrides     { _ao-overrides.at("label-size") }
-                    else                                      { cfg.label-size }
-        let lgap  = if a.label-gap != auto                   { _cm(a.label-gap) }
-                    else if "label-gap" in _ao-overrides       { _cm(_ao-overrides.at("label-gap")) }
-                    else                                      { _cm(cfg.label-gap) }
+        let lsize   = if a.label-size != auto { a.label-size      } else { eff.label-size }
+        let lgap    = if a.label-gap  != auto { _cm(a.label-gap)  } else { _cm(eff.label-gap) }
 
         // Bar width
-        let W-local = if a.ao-width != auto                  { _cm(a.ao-width) }
-                      else if "ao-width" in _ao-overrides     { _cm(_ao-overrides.at("ao-width")) }
-                      else                                    { W }
+        let W-local = if a.ao-width != auto { _cm(a.ao-width) } else { _cm(eff.ao-width) }
 
-        // x/y-scale: read from the live _ao-overrides dict (document-order),
-        // not from _ao-overrides-pre (snapshot of the final pre-pass state).
-        // This ensures config(x-scale/energy-scale) takes effect only for
-        // orbitals that follow it in the source, matching all other config() keys.
-        let xs-l = if "x-scale"      in _ao-overrides { _ao-overrides.at("x-scale")      } else { xs }
-        let ys-l = if "energy-scale" in _ao-overrides { _ao-overrides.at("energy-scale") } else { ys }
-
-        let ax = a.x * xs-l
-        let ay = a.energy * ys-l
+        // x/y-scale: from eff so that config(x-scale/energy-scale) applies in
+        // document order, consistent with every other config() key.
+        let ax = a.x * eff.x-scale
+        let ay = a.energy * eff.energy-scale
 
         _bar(ax, ay, W-local, bar-style, bar-color, bar-sw)
 
+        // Hoist electron position resolution out of the per-electron loop —
+        // these values are identical for every electron on the same orbital.
+        let up-pos   = if a.up-el-pos   != auto { a.up-el-pos   } else { eff.at("up-el-pos",   default: auto) }
+        let down-pos = if a.down-el-pos != auto { a.down-el-pos } else { eff.at("down-el-pos", default: auto) }
+
         for el in a.electrons {
-          let up-pos   = if a.up-el-pos   != auto { a.up-el-pos   }
-                         else if "up-el-pos"   in _ao-overrides { _ao-overrides.at("up-el-pos")   }
-                         else                                    { auto }
-          let down-pos = if a.down-el-pos != auto { a.down-el-pos }
-                         else if "down-el-pos" in _ao-overrides { _ao-overrides.at("down-el-pos") }
-                         else                                    { auto }
           if el == "pair" {
             _electron("up",   ax, ay, W-local, el-sep, el-color, el-sw, cfg.el-hook-size, up-pos, down-pos)
             _electron("down", ax, ay, W-local, el-sep, el-color, el-sw, cfg.el-hook-size, up-pos, down-pos)
@@ -1701,52 +1876,105 @@
 
       // ── raw() closures ────────────────────────────────────────────────────
       } else if item.kind == "raw" {
-        let xs-r = if "x-scale"      in _ao-overrides { _ao-overrides.at("x-scale")      } else { xs }
-        let ys-r = if "energy-scale" in _ao-overrides { _ao-overrides.at("energy-scale") } else { ys }
-
-        (item.body)(xs-r, ys-r, anchors)
+        (item.body)(eff.x-scale, eff.energy-scale, anchors)
       }
     }
 
     // Anonymous closures passed directly (not wrapped in raw()).
     for f in fns { f(xs, ys, anchors) }
 
-    // ── Energy axis ────────────────────────────────────────────────────────
-    for eax in eaxes {
+    // ── Energy axis and x-axis (optionally connected at origin) ───────────
+    if eaxes.len() > 0 or xaxes.len() > 0 {
       assert(aos.len() > 0,
-        message: "energy-axis: no orbitals defined — add at least one ao() call")
+        message: "energy-axis / x-axis: no orbitals defined — add at least one ao() call")
 
-      let all-y     = anchors.values().map(a => a.y)
-      let all-left  = anchors.values().map(a => a.left)
-      let y-min  = all-y.fold(all-y.first(),    (acc, v) => calc.min(acc, v))
-      let y-max  = all-y.fold(all-y.first(),    (acc, v) => calc.max(acc, v))
-      let x-left = all-left.fold(all-left.first(), (acc, v) => calc.min(acc, v))
-
-      let pad    = _cm(eax.padding)
-      let ax-x   = x-left - pad
-      let margin = 0.2
-      let y0     = y-min - margin
-      let y1     = y-max + margin
-
-      draw.line(
-        (ax-x, y0), (ax-x, y1),
-        mark: (end: (symbol: ">>", fill: black, scale: 0.75, size: 0.2)),
-        stroke: (thickness: cfg.stroke-w),
+      // Single pass over anchor values to compute all four bounds at once.
+      let av     = anchors.values()
+      let first  = av.first()
+      let bounds = av.fold(
+        (ymin: first.y, ymax: first.y, xleft: first.left, xright: first.right),
+        (b, a) => (
+          ymin:   calc.min(b.ymin,   a.y),
+          ymax:   calc.max(b.ymax,   a.y),
+          xleft:  calc.min(b.xleft,  a.left),
+          xright: calc.max(b.xright, a.right),
+        )
       )
+      let y-min   = bounds.ymin
+      let y-max   = bounds.ymax
+      let x-left  = bounds.xleft
+      let x-right = bounds.xright
 
-      if eax.title != none {
-        if eax.style == "horizontal" {
-          draw.content(
-            (ax-x - 0.25, (y0 + y1) / 2),
-            _resize(cfg.label-size, eax.title),
-            anchor: "center", angle: 90deg,
-          )
+      let margin = 0.2
+
+      // When both axes are present they share a common origin corner.
+      let both = eaxes.len() > 0 and xaxes.len() > 0
+
+      for eax in eaxes {
+        let pad  = _cm(eax.pad)
+        let ax-x = x-left - pad
+        // If paired with x-axis, start from the shared origin (bottom of range);
+        // otherwise leave the normal bottom margin.
+        let y0   = if both {
+          let xpad = _cm(xaxes.first().pad)
+          y-min - xpad
         } else {
-          draw.content(
-            (ax-x, y1 + 0.15),
-            _resize(cfg.label-size, eax.title),
-            anchor: "south",
-          )
+          y-min - margin
+        }
+        let y1   = y-max + margin
+
+        draw.line(
+          (ax-x, y0), (ax-x, y1),
+          mark: (end: (symbol: ">>", fill: black, scale: 0.75, size: 0.2)),
+          stroke: (thickness: cfg.stroke-w),
+        )
+
+        if eax.title != none {
+          if eax.style == "horizontal" {
+            draw.content(
+              (ax-x - 0.25, (y0 + y1) / 2),
+              _resize(cfg.label-size, eax.title),
+              anchor: "center", angle: 90deg,
+            )
+          } else {
+            draw.content(
+              (ax-x, y1 + 0.15),
+              _resize(cfg.label-size, eax.title),
+              anchor: "south",
+            )
+          }
+        }
+      }
+
+      for xax in xaxes {
+        let epad  = if eaxes.len() > 0 { _cm(eaxes.first().pad) } else { 0 }
+        let xpad  = _cm(xax.pad)
+        // Origin x: same as the energy-axis line when both are present,
+        // otherwise left edge minus a small margin.
+        let ax-x0 = if both  { x-left - epad } else { x-left - margin }
+        let ay    = y-min - xpad
+        let x1    = x-right + margin
+
+        draw.line(
+          (ax-x0, ay), (x1, ay),
+          mark: (end: (symbol: ">>", fill: black, scale: 0.75, size: 0.2)),
+          stroke: (thickness: cfg.stroke-w),
+        )
+
+        if xax.title != none {
+          if xax.style == "below" {
+            draw.content(
+              ((ax-x0 + x1) / 2, ay - 0.15),
+              _resize(cfg.label-size, xax.title),
+              anchor: "north",
+            )
+          } else {
+            draw.content(
+              (x1 + 0.15, ay),
+              _resize(cfg.label-size, xax.title),
+              anchor: "west",
+            )
+          }
         }
       }
     }

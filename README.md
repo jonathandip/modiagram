@@ -1,22 +1,26 @@
+[![Typst Package](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fjonathandip%2Fmodiagram%2Fmaster%2Ftypst.toml&query=%24.package.version&prefix=v&logo=typst&label=package&color=239DAD)](https://typst.app/universe/package/modiagram)
+[![MIT License](https://img.shields.io/badge/license-MIT-blue)](https://github.com/Typsium/alchemist/blob/master/LICENSE)
+
 # modiagram
 Draw molecular orbital and energy pathway diagrams: a package inspired by the LaTeX [`modiagram`](https://ctan.org/pkg/modiagram) package by Clemens Niederberger plus additional features for plotting energy pathway diagrams.
 
-Requires [`@preview/cetz:0.4.2`](https://typst.app/universe/package/cetz).
+Requires [`@preview/cetz:0.4.2`](https://typst.app/universe/package/cetz) and [`"@preview/zero:0.6.1"`](https://typst.app/universe/package/zero).
 
 ---
 ## Quick start
 
 ```typst
-#import "@preview/modiagram:0.1.0" as mo
+#import "@preview/modiagram:0.1.1" as mo
 
 #figure({
+  import mo: *
   modiagram(
-	ao(name: "1s-L", x: -1, energy: 0, electrons: "pair", label: $1s$),
-	ao(name: "1s-R", x: 1, energy: 0, electrons: "pair", label: $1s$),
-	ao(name: "S", x: 0, energy: -0.5, electrons: "pair", label: $sigma$),
-	ao(name: "S*", x: 0, energy: 0.5, electrons: "", label: $sigma^*$),
-	connect("1s-L & S", "1s-R & S", "1s-L & S*", "1s-R & S*"),
-	energy-axis(title: [Energy]),
+    ao(name: "1s-L", x: -1, energy:    0, electrons: "pair", label: $1s$),
+    ao(name: "1s-R", x:  1, energy:    0, electrons: "pair", label: $1s$),
+    ao(name: "S",    x:  0, energy: -0.5, electrons: "pair", label: $sigma$),
+    ao(name: "S*",   x:  0, energy:  0.5, electrons: "",     label: $sigma^*$),
+    connect("1s-L & S", "1s-R & S", "1s-L & S*", "1s-R & S*"),
+    energy-axis(title: [Energy]),
   )
 })
 ```
@@ -30,22 +34,22 @@ The recommended method for importing is to use an alias: this prevents certain f
 ```typst
 // Recommended — through an alias
 
-#import "@preview/modiagram:0.1.0" as mo
+#import "@preview/modiagram:0.1.1" as mo
 
 #figure({
   import mo: *
   modiagram(
-	...
+	ao(name: "test", x: 0, energy: 0, electrons: "pair", label: $1s$),
   )
 })
 
 // Named module — explicit prefix
 
-#import "@preview/modiagram:0.1.0" as mo
+#import "@preview/modiagram:0.1.1" as mo
 
 #figure(
   mo.modiagram(
-	...
+	ao(name: "test", x: 0, energy: 0, electrons: "pair", label: $1s$),
   )
 )
 ```
@@ -221,13 +225,13 @@ Useful for quickly adding annotations to the connecting lines between orbitals. 
 Draws a vertical (or horizontal) energy arrow at the left of the diagram.
 
 ```typst
-energy-axis(title: "Energy", padding: 0.7cm, style: "horizontal")
+energy-axis(title: "Energy", pad: 0.7cm, style: "horizontal")
 ```
 
 | Parameter | Default      | Description                         |
 | --------- | ------------ | ----------------------------------- |
 | `title`   | `none`       | Content near the arrowhead          |
-| `padding` | `0.5`        | Gap from leftmost orbital edge (cm) |
+| `pad`	    | `0.5`        | Gap from leftmost orbital edge (cm) |
 | `style`   | `"vertical"` | `"vertical"` or `"horizontal"`      |
 Example of use:
 
@@ -241,13 +245,38 @@ Example of use:
 	ao(name: "S*", x: 0, energy: 0.5, electrons: "", label: $sigma^*$),
 	connect("1s-L & S", "1s-R & S", "1s-L & S*", "1s-R & S*"),
 
-	energy-axis(title: [Energy], style: "horizontal", padding: 0.7),
+	energy-axis(title: [Energy], style: "horizontal", pad: 0.7),
   )
 })
 ```
 
 ![example-04](/images/example-04.png)
 
+---
+
+### `x-axis(title, padding, style)`
+ 
+Draws a horizontal axis below the diagram. When used together with `energy-axis()`, the two axes share an origin corner automatically.
+ 
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `title` | `content` | `none` | Label near the arrowhead |
+| `pad` | `float` or `length` | `0.5` | Vertical gap from the lowest orbital (cm) |
+| `style` | `str` | `"below"` | `"below"` or `"above"` (label position relative to arrow) |
+ 
+```typst
+#figure({
+  import mo: *
+  modiagram(
+    ao(name: "1", x: 0, energy: 0,   electrons: "pair"),
+    ao(name: "2", x: 1, energy: 0.3, electrons: "up"),
+    ao(name: "3", x: 2, energy: 0.8, electrons: ""),
+    energy-axis(title: [Energy]),
+    x-axis(title: [Reaction coordinate]),
+  )
+})
+```
+ 
 ---
 
 ### `config(...)` — inline diagram override
@@ -369,6 +398,70 @@ This feature is extremely useful for computational chemists who wish to represen
 })
 ```
 ![example-06](/images/example-06.png)
+
+---
+
+### `en-difference(...)`
+ 
+Draws a vertical double-headed arrow between two orbitals with an optional boxed ΔE label.
+ 
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `orb-a` | `str` | — | First orbital name |
+| `orb-b` | `str` | — | Second orbital name |
+| `body` | `content` or `auto` | `auto` | Label (`auto` computes `\|ΔE\|` from orbital energies) |
+| `ratio` | `ratio` | `50%` | Label position along the arrow |
+| `pad` | `float/length` | `0` | Extra offset from the orbital right edge |
+| `color` | `color` | `black` | Shared color |
+| `line-color` | `color` or `auto` | `auto` | Arrow/line color only |
+| `label-color` | `color` or `auto` | `auto` | Label color only |
+| `show-label` | `bool` | `true` | Whether to show the ΔE label box |
+| `thickness` | `length` | `0.5pt` | Stroke width |
+| `size` | `length` or `auto` | `8pt` | Label font size |
+| `title` | `content` | `none` | Secondary text inside the label box |
+| `title-gap` | `length` | `0.4em` | Space between value and title |
+
+It can be used with both `ao()` and `en-pathway()`; the key is to specify the correct orbitals. It is extremely useful for showing the energy difference between two orbitals.
+ 
+```typst
+#figure({
+  import mo: *
+  modiagram(
+    ao(name: "homo", x: 0, energy: -0.6, electrons: "pair",  label: [HOMO]),
+    ao(name: "lumo", x: 0, energy:  0.6, electrons: "",      label: [LUMO]),
+    en-difference("homo", "lumo", ratio: 50%, color: teal, title: [$Delta E_"gap"$]),
+    energy-axis(title: [Energy]),
+  )
+})
+```
+ 
+---
+
+### `ep-annotation(...)`
+ 
+Draws a double-headed span arrow with a centered label below the diagram, connecting two `en-pathway` orbitals.
+ 
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `from` | `int` or `str` | — | Start orbital: index or full name |
+| `to` | `int` or `str` | — | End orbital: index or full name |
+| `body` | `content` | — | Label content |
+| `name-prefix` | `str` | `"ep"` | Must match the `en-pathway()` prefix |
+| `dy` | `float/length` | `0` | Vertical offset (negative = further down) |
+| `pad` | `float/length` | `0` | Extra horizontal margin beyond orbital edges |
+| `color` | `color` | `black` | Arrow and label color |
+| `size` | `length` or `auto` | `auto` | Label font size |
+ 
+```typst
+#figure({
+  import mo: *
+  modiagram(
+    en-pathway(0, 0.5, 1.1, 1.7),
+    ep-annotation(0, 3, [Full pathway], dy: -0.5),
+    ep-annotation(1, 2, $Delta G$, color: red, size: 8pt),
+  )
+})
+```
 
 ---
 
@@ -522,30 +615,40 @@ per-element parameter
 #figure({
   import mo: *
   modiagram(
-	config(energy-scale: 0.3),
-	
-	  line("olive-2", rel(0.9,3), stroke: 0.5pt+blue, mark:(end: ">>", fill: blue, scale: 0.5)),
-	  circle("olive-2", radius: 0.6, stroke: 0.5pt+blue, fill: yellow.lighten(80%)),
-	  content("olive-2", dx: 1.7, dy: 1.1, text(fill: blue)[example\ of content]),
-	  content("red-1.right", pad: 0.6, )[Another\ way to\ include\ content],
-	  content("red-3.right", pad: 0.6, )[#image("Caffeine_structure.svg", width: 1.3cm)],
+    config(energy-scale: 0.3),
+    line("olive-2", rel(0.9,3), stroke: 0.5pt+blue, mark:(end: ">>", fill: blue, scale: 0.5)),
+    circle("olive-2", radius: 0.6, stroke: 0.5pt+blue, fill: yellow.lighten(80%)),
+    content("olive-2", dx: 1.7, dy: 1.1, text(fill: blue)[example\ of content]),
+    content("red-1.right", pad: 0.6, )[#align(center)[#text(size: 7pt)[Another\ way to\ include\ content]]],
+    content("red-1.left", pad: 0.6)[#image("../images/Caffeine_structure.svg", width: 1.3cm)],
 
-	en-pathway(
-	  -4, 4, -1, 2, -8,
-	  labels: ([SM], [TS$alpha$-1], [Key], [TS$beta$-1], [P]),
-	  show-energies: true,
-	  color: red,
-	  name-prefix: "red"
-	),
+    en-pathway(
+      -4, 4, -1, 2, -8,
+      labels: ([SM], [TS$alpha$-1], [Key], [TS$beta$-1], [P]),
+      show-energies: true,
+      color: red,
+      name-prefix: "red"
+      ),
+    en-pathway(
+      -1, 2, -5, 5.15, -4,
+      labels: ([SM], [$gamma$], [Int], [Ex], [`code`]),
+      color: olive,
+      name-prefix: "olive"
+    ),
 
-	en-pathway(
-	  -1, 2, -5, 5, -4,
-	  labels: ([SM], [$gamma$], [Int], [Ex], [`code`]),
-	  color: olive,
-	  name-prefix: "olive"
-	),
+    ao(x: 4.8, energy: 0, electrons: "pair"),
+    ao(x: 2.4, energy: 1, electrons: "up", up-el-pos: 0),
 
-	energy-axis(title: "Energy in kcal/mol", style: "horizontal"),
+    ep-annotation("red-0", "red-2", [Step 1]),
+    ep-annotation("olive-3", "olive-4", [Step 2], color: blue),
+
+    en-difference("olive-2", "red-1", ratio: 70%, color: red, pad: 5.7),
+    en-difference("olive-3", "red-4", color: purple, pad: 1.3, title: [TS]),
+    en-difference("olive-1", "olive-2", color: blue, pad: 3, ratio: 25%),
+
+    energy-axis(title: "Energy in kcal/mol", style: "horizontal"),
+    x-axis(title: "reaction coordinate", style: "below", pad: 1)
+
   )
 })
 ```
@@ -557,6 +660,3 @@ per-element parameter
 ## License
 
 MIT — see LICENSE for details.
-
-Inspired by the LaTeX `modiagram` package by Clemens Niederberger (v0.3a).
-

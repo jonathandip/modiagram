@@ -1,19 +1,23 @@
+#import "../src/lib.typ" as mo
+#set text(font: "IBM Plex Sans", weight: "light")
+#show math.equation: set text(font: "Fira Math", weight: "light")
+
 #set page(width: auto, height: auto, margin: 10pt)
 //#set text(font: "IBM Plex Sans", weight: "light", size: 8pt)
 //#show math.equation: set text(font: "Fira Math", weight: "light")
-#import "modiagram.typ" as mo
 
 // Quick start
-#figure(
-  mo.modiagram(
-    mo.ao(name: "1s-L", x: -1, energy:    0, electrons: "pair", label: $1s$),
-    mo.ao(name: "1s-R", x:  1, energy:    0, electrons: "pair", label: $1s$),
-    mo.ao(name: "S",    x:  0, energy: -0.5, electrons: "pair", label: $sigma$),
-    mo.ao(name: "S*",   x:  0, energy:  0.5, electrons: "",     label: $sigma^*$),
-    mo.connect("1s-L & S", "1s-R & S", "1s-L & S*", "1s-R & S*"),
-    mo.energy-axis(title: [Energy]),
+#figure({
+  import mo: *
+  modiagram(
+    ao(name: "1s-L", x: -1, energy:    0, electrons: "pair", label: $1s$),
+    ao(name: "1s-R", x:  1, energy:    0, electrons: "pair", label: $1s$),
+    ao(name: "S",    x:  0, energy: -0.5, electrons: "pair", label: $sigma$),
+    ao(name: "S*",   x:  0, energy:  0.5, electrons: "",     label: $sigma^*$),
+    connect("1s-L & S", "1s-R & S", "1s-L & S*", "1s-R & S*"),
+    energy-axis(title: [Energy]),
   )
-)
+})
 
 #pagebreak()
 
@@ -48,7 +52,7 @@
   import mo: *
   modiagram(
 
-  ao(name: "sigma2s1", x: 1.00, energy: 0.00, electrons: "pair", label: $sigma_(2s)$),
+  ao(name: "sigma2s1", x: 1.00, energy: 0.00, electrons: "pair", label: [test]),
   ao(name:      "2s1", x: 0.00, energy: 0.50, electrons: "pair", label: $2s$, bar-stroke-w: 1pt, bar-color: purple, label-color: black),
   ao(name:      "2s2", x: 2.00, energy: 0.50, electrons: "pair", label: $2s$, el-stroke-w: .8pt, el-color: purple),
   ao(name: "sigma2s2", x: 1.00, energy: 1.00, electrons: "pair", label: $sigma_(2s)^*$),
@@ -92,7 +96,7 @@
     ao(name: "S*",   x:  0, energy:  0.5, electrons: "",     label: $sigma^*$),
     connect("1s-L & S", "1s-R & S", "1s-L & S*", "1s-R & S*"),
 
-    energy-axis(title: [Energy], style: "horizontal", padding: 0.7),
+    energy-axis(title: [Energy], style: "horizontal", pad: 0.7),
   )
 })
 
@@ -201,7 +205,7 @@
     ao(name: "S*",   x:  0, energy:  0.5, electrons: "",     label: $sigma^*$),
     connect("1s-L & S", "1s-R & S", "1s-L & S*", "1s-R & S*"),
 
-    energy-axis(title: [Energy], style: "horizontal", padding: 0.2),
+    energy-axis(title: [Energy], style: "horizontal", pad: 0.2),
   )
 })
 
@@ -215,7 +219,7 @@
     ao(name: "S*",   x:  0, energy:  0.5, electrons: "",     label: $sigma^*$),
     connect("1s-L & S", "1s-R & S", "1s-L & S*", "1s-R & S*"),
 
-    energy-axis(title: [Energy], style: "horizontal", padding: 0.2),
+    energy-axis(title: [Energy], style: "horizontal", pad: 0.2),
   )
 })
 
@@ -229,7 +233,7 @@
     ao(name: "S*",   x:  0, energy:  0.5, electrons: "",     label: $sigma^*$),
     connect("1s-L & S", "1s-R & S", "1s-L & S*", "1s-R & S*"),
 
-    energy-axis(title: [Energy], style: "horizontal", padding: 0.2),
+    energy-axis(title: [Energy], style: "horizontal", pad: 0.2),
   )
 })
 
@@ -243,7 +247,7 @@
     ao(name: "S*",   x:  0, energy:  0.5, electrons: "",     label: $sigma^*$),
     connect("1s-L & S", "1s-R & S", "1s-L & S*", "1s-R & S*"),
 
-    energy-axis(title: [Energy], style: "horizontal", padding: 0.2),
+    energy-axis(title: [Energy], style: "horizontal", pad: 0.2),
   )
 })
 
@@ -266,7 +270,7 @@
     connect("1s-R & S*", style: "gray"),
     connect-label("S*", "1s-R", [gray], size: 6pt, pad: 0.1),
 
-    energy-axis(title: [Energy], style: "horizontal", padding: 0.2),
+    energy-axis(title: [Energy], style: "horizontal", pad: 0.2),
   )
 })
 
@@ -279,8 +283,9 @@
     line("olive-2", rel(0.9,3), stroke: 0.5pt+blue, mark:(end: ">>", fill: blue, scale: 0.5)),
     circle("olive-2", radius: 0.6, stroke: 0.5pt+blue, fill: yellow.lighten(80%)),
     content("olive-2", dx: 1.7, dy: 1.1, text(fill: blue)[example\ of content]),
-    content("red-1.right", pad: 0.6, )[Another\ way to\ include\ content],
-    content("red-3.right", pad: 0.6, )[#image("Caffeine_structure.svg", width: 1.3cm)],
+    content("red-1.right", pad: 0.6, )[#align(center)[#text(size: 7pt)[Another\ way to\ include\ content]]],
+    content("red-1.left", pad: 0.6)[#image("../images/Caffeine_structure.svg", width: 1.3cm)],
+
     en-pathway(
       -4, 4, -1, 2, -8,
       labels: ([SM], [TS$alpha$-1], [Key], [TS$beta$-1], [P]),
@@ -289,13 +294,24 @@
       name-prefix: "red"
       ),
     en-pathway(
-      -1, 2, -5, 5, -4,
+      -1, 2, -5, 5.15, -4,
       labels: ([SM], [$gamma$], [Int], [Ex], [`code`]),
       color: olive,
       name-prefix: "olive"
     ),
 
+    ao(x: 4.8, energy: 0, electrons: "pair"),
+    ao(x: 2.4, energy: 1, electrons: "up", up-el-pos: 0),
+
+    ep-annotation("red-0", "red-2", [Step 1]),
+    ep-annotation("olive-3", "olive-4", [Step 2], color: blue),
+
+    en-difference("olive-2", "red-1", ratio: 70%, color: red, pad: 5.7),
+    en-difference("olive-3", "red-4", color: purple, pad: 1.3, title: [TS]),
+    en-difference("olive-1", "olive-2", color: blue, pad: 3, ratio: 25%),
+
     energy-axis(title: "Energy in kcal/mol", style: "horizontal"),
-    
+    x-axis(title: "reaction coordinate", style: "below", pad: 1)
+
   )
 })
